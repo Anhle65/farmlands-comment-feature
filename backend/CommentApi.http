@@ -1,4 +1,4 @@
-@CommentApi_HostAddress = http://localhost:5208
+@CommentApi_HostAddress = http://localhost:8000
 
 GET {{CommentApi_HostAddress}}/api/comments
 Accept: application/json
