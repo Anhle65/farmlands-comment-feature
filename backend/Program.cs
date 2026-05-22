@@ -1,10 +1,20 @@
+using CommentApi.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+const string FrontendCors = "AllowFrontend";
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddSingleton<CommentStore>();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(FrontendCors, policy =>
+        policy.WithOrigins("http://localhost:5173") // Vite dev server
+              .AllowAnyHeader()
+              .AllowAnyMethod());
+});
 
 var app = builder.Build();
 
@@ -15,6 +25,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors(FrontendCors);
 
 app.UseAuthorization();
 

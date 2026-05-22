@@ -1,6 +1,6 @@
 @CommentApi_HostAddress = http://localhost:5208
 
-GET {{CommentApi_HostAddress}}/weatherforecast/
+GET {{CommentApi_HostAddress}}/api/comments
 Accept: application/json
 
 ###
