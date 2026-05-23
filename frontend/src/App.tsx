@@ -1,3 +1,4 @@
+import './App.css';
 import { CommentList } from './components/CommentList';
 
 function App() {

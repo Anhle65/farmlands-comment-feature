@@ -1,3 +1,17 @@
+.comment-list {
+  text-align: left;
+  padding: 0 32px;
+}
+
+.comment-list > div {
+  margin-bottom: 16px;
+}
+
+.comment-reply {
+  margin-left: 32px;
+  margin-top: 8px;
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
