@@ -35,21 +35,26 @@ export function CommentList() {
     return { topLevel, repliesByParent };
   }, [comments]);
 
-  if (status === 'loading') return <p>Loading comments…</p>;
-  if (status === 'error') return <p>Could not load comments. Is the API running?</p>;
-
   return (
-    <div className="comment-list">
-      <p>{comments.length} comments</p>
-      {topLevel.map((parent) => (
-        <div key={parent.id}>
-          <CommentRow comment={parent} />
-          {(repliesByParent.get(parent.id) ?? []).map((reply) => (
-            <CommentRow key={reply.id} comment={reply} isReply />
+    <>
+      <h2>Comments: {status === 'ready' ? `(${comments.length})` : ''}</h2>
+      {status === 'loading' && <p className="comment-list">Loading comments…</p>}
+      {status === 'error' && (
+        <p className="comment-list">Could not load comments. Is the API running?</p>
+      )}
+      {status === 'ready' && (
+        <div className="comment-list">
+          {topLevel.map((parent) => (
+            <div key={parent.id}>
+              <CommentRow comment={parent} />
+              {(repliesByParent.get(parent.id) ?? []).map((reply) => (
+                <CommentRow key={reply.id} comment={reply} isReply />
+              ))}
+            </div>
           ))}
         </div>
-      ))}
-    </div>
+      )}
+    </>
   );
 }
 
