@@ -4,6 +4,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The test project lives at backend/CommentApi.Tests/, a subfolder of this
+         project's directory. Without this, this project's default **/*.cs glob would
+         also pick up the test sources (and their generated obj/) and try to compile
+         them here — causing missing-xUnit and duplicate-AssemblyInfo errors. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);CommentApi.Tests/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
