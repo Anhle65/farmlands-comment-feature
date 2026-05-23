@@ -1,4 +1,5 @@
 using CommentApi.Data;
+using CommentApi.Models;
 
 namespace CommentApi.Tests.Unit;
 
@@ -62,5 +63,42 @@ public class CommentStoreTests
 
         Assert.True(conflicts.Count == 0,
             $"AuthorId(s) map to multiple names: {string.Join("; ", conflicts)}");
+    }
+
+    [Fact]
+    public void Add_NewComment_AppendsToStore()
+    {
+        var store = new CommentStore();
+        var before = store.GetAll().Count;
+        store.Add(new Comment
+        {
+            AuthorId = "55555555-5555-5555-5555-555555555555",
+            AuthorName = "Anh",
+            Content = "This is a new comment.",
+        });
+        Assert.Equal(before + 1, store.GetAll().Count);
+    }
+
+    [Fact]
+    public void Add_ReplyWithParentId_PreservesParentId()
+    {
+        var store = new CommentStore();
+        var parentComment = store.Add(new Comment
+        {
+            AuthorId = "55555555-5555-5555-5555-555555555555",
+            AuthorName = "Anh",
+            Content = "This is top-level comment.",
+        });
+        Assert.NotNull(parentComment);
+
+        var replyComment = store.Add(new Comment
+        {
+            AuthorId = "55555555-5555-5555-5555-555555555555",
+            AuthorName = "Anh",
+            Content = "This is a reply.",
+            ParentId = parentComment.Id,
+        });
+        Assert.NotNull(replyComment);
+        Assert.Equal(parentComment.Id, replyComment.ParentId);
     }
 }
