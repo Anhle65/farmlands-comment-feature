@@ -11,12 +11,13 @@ public static class CommentAuthorization
 {
     public static readonly TimeSpan EditWindow = TimeSpan.FromMinutes(5);
 
-    // CheckCanModify(Comment comment, string requesterId) → bool
+    // CheckCanModify(Comment comment, string requesterId, string requesterName) → bool
     // Implementation comes after CommentAuthorizationTests goes red on it.
-    public static bool CheckCanModify(Comment comment, string requesterId)
+    public static bool CheckCanModify(Comment comment, string requesterId, string requesterName)
     {
         var isOwner = comment.AuthorId == requesterId;
+        var isAuthor = comment.AuthorName == requesterName;
         var withinWindow = DateTimeOffset.UtcNow - comment.CreatedAt <= EditWindow;
-        return isOwner && withinWindow;
+        return isOwner && isAuthor && withinWindow;
     }
 }

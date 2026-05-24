@@ -6,7 +6,7 @@ public class CommentAuthorizationTests
     private const string ValidAuthorId = "55555555-5555-5555-5555-555555555555";
     private const string InvalidAuthorId = "00000000-0000-0000-0000-000000000000";
     private const string ValidAuthorName = "Anh";
-    
+    private const string InvalidAuthorName = "Someone";
     [Fact]
     public void CheckCanModify_OwnerWithinWindow_ReturnsTrue()
     {
@@ -18,7 +18,7 @@ public class CommentAuthorizationTests
             Content = "Anything.",
             CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1),   // 1 minute ago — inside window
         };
-        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId);
+        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName);
         Assert.True(canModify);
     }
 
@@ -33,7 +33,7 @@ public class CommentAuthorizationTests
             Content = "Anything.",
             CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5),   // exactly at boundary
         };
-        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId);
+        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName);
         Assert.True(canModify);
     }
 
@@ -48,7 +48,7 @@ public class CommentAuthorizationTests
             Content = "Anything.",
             CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-6),   // 6 minutes ago — outside window
         };
-        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId);
+        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName);
         Assert.False(canModify);
     }
 
@@ -58,12 +58,12 @@ public class CommentAuthorizationTests
         var comment = new Comment
         {
             Id = 1,
-            AuthorId = InvalidAuthorId,
+            AuthorId = ValidAuthorId,
             AuthorName = ValidAuthorName,
             Content = "Anything.",
             CreatedAt = DateTimeOffset.UtcNow,   // right now — inside window, but requester isn't owner
         };
-        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId);
+        var canModify = CommentAuthorization.CheckCanModify(comment, InvalidAuthorId, InvalidAuthorName);
         Assert.False(canModify);
     }
 }
