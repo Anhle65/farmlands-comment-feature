@@ -1,0 +1,472 @@
+{
+    "info": {
+        "_postman_id": "c0a8a5f0-9f51-4cf9-9b3d-c0a8a5f09f51",
+        "name": "Comments API",
+        "description": "Tests for the standalone commenting feature's REST API.\n\nUsage:\n1. Import this collection AND `local.postman_environment.json`.\n2. Select the \"Local\" environment in the top-right.\n3. Start the backend (`cd backend && dotnet run`) — must be on http://localhost:8000.\n4. Click \"Run collection\" to execute every request in order.\n\n**Note on state:** The backend uses an in-memory store. Running the POST tests adds rows. If you run the full collection more than once without restarting the backend, the GET-tests will fail because the seed-count assertions assume a fresh state. Restart the backend (Ctrl+C in the `dotnet run` terminal and re-run) between full passes.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "comments",
+            "item": [
+                {
+                    "name": "GET comments",
+                    "item": [
+                        {
+                            "name": "GET comments -no parameters-",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "const comments = pm.response.json();",
+                                            "const expectedNumComments = 4;",
+                                            "",
+                                            "pm.test(\"Status code is 200\", function () {",
+                                            "    pm.response.to.have.status(200);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Response is a JSON array\", function () {",
+                                            "    pm.expect(Array.isArray(comments)).to.equal(true);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Valid comment list length\", function () {",
+                                            "    pm.expect(comments.length).to.equal(expectedNumComments);",
+                                            "});",
+                                            "",
+                                            "// Seed timestamps (relative to startup): #1=now-3d, #2=now-2d, #3=now-1d, #4=now-5h.",
+                                            "// Newest-first => ids [4, 3, 2, 1].",
+                                            "pm.test(\"Valid ids and ordering (newest first)\", function () {",
+                                            "    const expectedOrdering = [4, 3, 2, 1];",
+                                            "    for (let i = 0; i < expectedOrdering.length; i++) {",
+                                            "        pm.expect(comments[i].id, `position ${i}`).to.equal(expectedOrdering[i]);",
+                                            "    }",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Sorted by createdAt descending\", function () {",
+                                            "    for (let i = 0; i < comments.length - 1; i++) {",
+                                            "        const newer = new Date(comments[i].createdAt).getTime();",
+                                            "        const older = new Date(comments[i + 1].createdAt).getTime();",
+                                            "        pm.expect(newer, `position ${i} not >= position ${i + 1}`).to.be.at.least(older);",
+                                            "    }",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Expected comment data structure\", function () {",
+                                            "    const c = comments[0];",
+                                            "    pm.expect(c.id).to.be.a(\"number\");",
+                                            "    pm.expect(c.authorId).to.be.a(\"string\");",
+                                            "    pm.expect(c.authorName).to.be.a(\"string\");",
+                                            "    pm.expect(c.content).to.be.a(\"string\");",
+                                            "    pm.expect(c.createdAt).to.be.a(\"string\");",
+                                            "    pm.expect(c.isDeleted).to.be.a(\"boolean\");",
+                                            "    pm.expect(c.parentId).to.satisfy(v => v === null || typeof v === \"number\");",
+                                            "    pm.expect(c.updatedAt).to.satisfy(v => v === null || typeof v === \"string\");",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Soft-deleted comment is present with isDeleted=true (id 4)\", function () {",
+                                            "    const sam = comments.find(c => c.id === 4);",
+                                            "    pm.expect(sam, \"comment #4 should be present\").to.not.equal(undefined);",
+                                            "    pm.expect(sam.isDeleted).to.equal(true);",
+                                            "    pm.expect(sam.authorName).to.equal(\"Sam\");",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Reply has parentId set (id 2 -> 1)\", function () {",
+                                            "    const eve = comments.find(c => c.id === 2);",
+                                            "    pm.expect(eve, \"comment #2 should be present\").to.not.equal(undefined);",
+                                            "    pm.expect(eve.parentId).to.equal(1);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Each authorId maps to exactly one name\", function () {",
+                                            "    const byAuthor = new Map();",
+                                            "    for (const c of comments) {",
+                                            "        if (!byAuthor.has(c.authorId)) byAuthor.set(c.authorId, new Set());",
+                                            "        byAuthor.get(c.authorId).add(c.authorName);",
+                                            "    }",
+                                            "    for (const [authorId, names] of byAuthor.entries()) {",
+                                            "        pm.expect(names.size, `authorId ${authorId} maps to multiple names: ${[...names]}`).to.equal(1);",
+                                            "    }",
+                                            "});"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{BASE_URL}}/comments",
+                                    "host": [
+                                        "{{BASE_URL}}"
+                                    ],
+                                    "path": [
+                                        "comments"
+                                    ]
+                                },
+                                "description": "Returns all comments as JSON, sorted newest first."
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "POST comments",
+                    "item": [
+                        {
+                            "name": "POST comments -valid-",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "const body = pm.response.json();",
+                                            "",
+                                            "pm.test(\"Status code is 201 Created\", function () {",
+                                            "    pm.response.to.have.status(201);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Response carries the input fields\", function () {",
+                                            "    pm.expect(body.authorId).to.equal(\"55555555-5555-5555-5555-555555555555\");",
+                                            "    pm.expect(body.authorName).to.equal(\"Anh\");",
+                                            "    pm.expect(body.content).to.equal(\"A new comment from Postman.\");",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Server-controlled fields are populated\", function () {",
+                                            "    pm.expect(body.id).to.be.a(\"number\").and.to.be.greaterThan(0);",
+                                            "    pm.expect(body.createdAt).to.be.a(\"string\");",
+                                            "    pm.expect(Number.isFinite(new Date(body.createdAt).getTime())).to.equal(true);",
+                                            "    pm.expect(body.parentId).to.be.null;",
+                                            "    pm.expect(body.updatedAt).to.be.null;",
+                                            "    pm.expect(body.isDeleted).to.equal(false);",
+                                            "});",
+                                            "",
+                                            "// Save for the chained reply test below",
+                                            "pm.environment.set(\"createdCommentId\", body.id);"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"authorId\": \"55555555-5555-5555-5555-555555555555\",\n    \"authorName\": \"Anh\",\n    \"content\": \"A new comment from Postman.\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{BASE_URL}}/comments",
+                                    "host": [
+                                        "{{BASE_URL}}"
+                                    ],
+                                    "path": [
+                                        "comments"
+                                    ]
+                                },
+                                "description": "Create a valid top-level comment. Expected: 201 Created with full comment object."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "POST comments -valid reply-",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "const body = pm.response.json();",
+                                            "const parentId = Number(pm.environment.get(\"createdCommentId\"));",
+                                            "",
+                                            "pm.test(\"createdCommentId from previous request is available\", function () {",
+                                            "    pm.expect(Number.isFinite(parentId)).to.equal(true);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Status code is 201 Created\", function () {",
+                                            "    pm.response.to.have.status(201);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"ParentId is preserved\", function () {",
+                                            "    pm.expect(body.parentId).to.equal(parentId);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Reply has its own Id, greater than the parent's\", function () {",
+                                            "    pm.expect(body.id).to.be.a(\"number\").and.to.be.greaterThan(parentId);",
+                                            "    pm.expect(body.content).to.equal(\"This is a reply from Postman.\");",
+                                            "    pm.expect(body.isDeleted).to.equal(false);",
+                                            "});"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"authorId\": \"55555555-5555-5555-5555-555555555555\",\n    \"authorName\": \"Anh\",\n    \"content\": \"This is a reply from Postman.\",\n    \"parentId\": {{createdCommentId}}\n}"
+                                },
+                                "url": {
+                                    "raw": "{{BASE_URL}}/comments",
+                                    "host": [
+                                        "{{BASE_URL}}"
+                                    ],
+                                    "path": [
+                                        "comments"
+                                    ]
+                                },
+                                "description": "Reply to the comment created by `POST comments -valid-`. Expected: 201 Created with parentId preserved."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "POST comments -invalid- -empty content-",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "pm.test(\"Status code is 400 Bad Request\", function () {",
+                                            "    pm.response.to.have.status(400);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Error message mentions Content\", function () {",
+                                            "    pm.expect(pm.response.text()).to.match(/Content/i);",
+                                            "});"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"authorId\": \"55555555-5555-5555-5555-555555555555\",\n    \"authorName\": \"Anh\",\n    \"content\": \"\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{BASE_URL}}/comments",
+                                    "host": [
+                                        "{{BASE_URL}}"
+                                    ],
+                                    "path": [
+                                        "comments"
+                                    ]
+                                },
+                                "description": "Empty content. Expected: 400 Bad Request with validator error message."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "POST comments -invalid- -content too long-",
+                            "event": [
+                                {
+                                    "listen": "prerequest",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "// Build a 1001-char string in a pre-request hook instead of inlining 1001 'a's in the body.",
+                                            "pm.variables.set(\"longContent\", \"a\".repeat(1001));"
+                                        ]
+                                    }
+                                },
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "pm.test(\"Status code is 400 Bad Request\", function () {",
+                                            "    pm.response.to.have.status(400);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Error message mentions the length limit\", function () {",
+                                            "    pm.expect(pm.response.text()).to.match(/1000/);",
+                                            "});"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"authorId\": \"55555555-5555-5555-5555-555555555555\",\n    \"authorName\": \"Anh\",\n    \"content\": \"{{longContent}}\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{BASE_URL}}/comments",
+                                    "host": [
+                                        "{{BASE_URL}}"
+                                    ],
+                                    "path": [
+                                        "comments"
+                                    ]
+                                },
+                                "description": "Content > 1000 chars. Expected: 400. The pre-request script builds a 1001-char string and exposes it as {{longContent}}."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "POST comments -invalid- -empty authorName-",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "pm.test(\"Status code is 400 Bad Request\", function () {",
+                                            "    pm.response.to.have.status(400);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Error message mentions AuthorName\", function () {",
+                                            "    pm.expect(pm.response.text()).to.match(/AuthorName/i);",
+                                            "});"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"authorId\": \"55555555-5555-5555-5555-555555555555\",\n    \"authorName\": \"\",\n    \"content\": \"A comment with no name.\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{BASE_URL}}/comments",
+                                    "host": [
+                                        "{{BASE_URL}}"
+                                    ],
+                                    "path": [
+                                        "comments"
+                                    ]
+                                },
+                                "description": "Empty authorName. Expected: 400 Bad Request."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "POST comments -invalid- -empty authorId-",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "pm.test(\"Status code is 400 Bad Request\", function () {",
+                                            "    pm.response.to.have.status(400);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Error message mentions AuthorId\", function () {",
+                                            "    pm.expect(pm.response.text()).to.match(/AuthorId/i);",
+                                            "});"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"authorId\": \"\",\n    \"authorName\": \"Anh\",\n    \"content\": \"A comment with no authorId.\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{BASE_URL}}/comments",
+                                    "host": [
+                                        "{{BASE_URL}}"
+                                    ],
+                                    "path": [
+                                        "comments"
+                                    ]
+                                },
+                                "description": "Empty authorId. Expected: 400 Bad Request."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "POST comments -invalid- -parent does not exist-",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "pm.test(\"Status code is 400 Bad Request\", function () {",
+                                            "    pm.response.to.have.status(400);",
+                                            "});",
+                                            "",
+                                            "pm.test(\"Error message mentions the parent\", function () {",
+                                            "    pm.expect(pm.response.text()).to.match(/[Pp]arent/);",
+                                            "});"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"authorId\": \"55555555-5555-5555-5555-555555555555\",\n    \"authorName\": \"Anh\",\n    \"content\": \"Reply to a parent that doesn't exist.\",\n    \"parentId\": 999999\n}"
+                                },
+                                "url": {
+                                    "raw": "{{BASE_URL}}/comments",
+                                    "host": [
+                                        "{{BASE_URL}}"
+                                    ],
+                                    "path": [
+                                        "comments"
+                                    ]
+                                },
+                                "description": "parentId references a non-existent comment. Expected: 400 Bad Request from the controller's referential check."
+                            },
+                            "response": []
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
