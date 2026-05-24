@@ -5,6 +5,8 @@ namespace CommentApi.Tests.Unit;
 
 public class CommentStoreTests
 {
+    private const string _authorId = "55555555-5555-5555-5555-555555555555";
+    private const string _authorName = "Anh";
     [Fact]
     public void GetAll_ReturnsSeededComments()
     {
@@ -72,8 +74,8 @@ public class CommentStoreTests
         var before = store.GetAll().Count;
         store.Add(new Comment
         {
-            AuthorId = "55555555-5555-5555-5555-555555555555",
-            AuthorName = "Anh",
+            AuthorId = _authorId,
+            AuthorName = _authorName,
             Content = "This is a new comment.",
         });
         Assert.Equal(before + 1, store.GetAll().Count);
@@ -85,20 +87,63 @@ public class CommentStoreTests
         var store = new CommentStore();
         var parentComment = store.Add(new Comment
         {
-            AuthorId = "55555555-5555-5555-5555-555555555555",
-            AuthorName = "Anh",
+            AuthorId = _authorId,
+            AuthorName = _authorName,
             Content = "This is top-level comment.",
         });
         Assert.NotNull(parentComment);
 
         var replyComment = store.Add(new Comment
         {
-            AuthorId = "55555555-5555-5555-5555-555555555555",
-            AuthorName = "Anh",
+            AuthorId = _authorId,
+            AuthorName = _authorName,
             Content = "This is a reply.",
             ParentId = parentComment.Id,
         });
         Assert.NotNull(replyComment);
         Assert.Equal(parentComment.Id, replyComment.ParentId);
+    }
+
+    [Fact]
+    public void SoftDelete_ExistingComment_SetsIsDeletedTrue()
+    {
+        var store = new CommentStore();
+        var added = store.Add(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Will be deleted.",
+        });
+        var deleted = store.SoftDelete(added.Id);
+        Assert.True(deleted);
+        Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+    }
+
+    [Fact]
+    public void SoftDelete_NonExistentId_ReturnsFalseAndChangesNothing()
+    {
+        var store = new CommentStore();
+        var before = store.GetAll().Count(c => c.IsDeleted);
+        var result = store.SoftDelete(-1);   // an Id that doesn't exist
+        Assert.False(result);
+        Assert.Equal(before, store.GetAll().Count(c => c.IsDeleted));
+    }
+
+    [Fact]
+    public void SoftDelete_AlreadyDeletedComment_RemainsDeleted()
+    {
+        var store = new CommentStore();
+        var added = store.Add(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Will be deleted twice.",
+        });
+        var firstDelete = store.SoftDelete(added.Id);
+        Assert.True(firstDelete);
+        Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+        var secondDelete = store.SoftDelete(added.Id);
+        Assert.True(secondDelete);
+        Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
 }
