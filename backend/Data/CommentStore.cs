@@ -47,4 +47,24 @@ public class CommentStore
     }
 
     public IReadOnlyList<Comment> GetAll() => _comments;
+
+    /// Appends a new comment. Assigns Id (next sequential), CreatedAt (UtcNow), and the
+    /// server-controlled defaults. Assumes the input has already passed validation —
+    /// callers should run <c>CommentValidator.Validate</c> first.
+    public Comment Add(Comment input)
+    {
+        var created = new Comment
+        {
+            Id = _comments.Max(c => c.Id) + 1,
+            AuthorId = input.AuthorId,
+            AuthorName = input.AuthorName,
+            Content = input.Content,
+            CreatedAt = DateTimeOffset.UtcNow,
+            ParentId = input.ParentId,
+            UpdatedAt = null,
+            IsDeleted = false,
+        };
+        _comments.Add(created);
+        return created;
+    }
 }
