@@ -1,6 +1,7 @@
 using CommentApi.Controllers;
 using CommentApi.Data;
 using CommentApi.Models;
+using Microsoft.AspNetCore.Mvc;
 
 namespace CommentApi.Tests.Unit;
 
@@ -33,7 +34,7 @@ public class CommentsControllerTests
     }
 
     [Fact]
-    public void PostComment_ValidInput_AddsToStoreAndReturnsCreatedComment()
+    public void PostComment_ValidInput_AddsToStoreAndReturns201Created()
     {
         // Arrange
         var store = new CommentStore();
@@ -45,18 +46,20 @@ public class CommentsControllerTests
         const string content = "This is a new comment.";
 
         // Act
-        var result = controller.PostComment(new Comment
+        var action = controller.PostComment(new Comment
         {
             AuthorId = authorId,
             AuthorName = authorName,
             Content = content,
         });
 
+        // Assert — unwrap the 201 Created result
+        var result = AssertCreated(action);
+
         // Assert — side effect on the store
         Assert.Equal(before + 1, store.GetAll().Count);
 
         // Assert — returned comment carries input fields
-        Assert.NotNull(result);
         Assert.Equal(authorId, result.AuthorId);
         Assert.Equal(authorName, result.AuthorName);
         Assert.Equal(content, result.Content);
@@ -70,20 +73,19 @@ public class CommentsControllerTests
     }
 
     [Fact]
-    public void PostComment_ValidReply_AddsToStoreAndReturnsCreatedComment()
+    public void PostComment_ValidReply_AddsToStoreAndReturns201Created()
     {
         // Arrange
         var store = new CommentStore();
         var controller = new CommentsController(store);
 
         // Create the parent in this test so the assertion doesn't depend on the seed
-        var parent = controller.PostComment(new Comment
+        var parent = AssertCreated(controller.PostComment(new Comment
         {
             AuthorId = "55555555-5555-5555-5555-555555555555",
             AuthorName = "Anh",
             Content = "Parent comment.",
-        });
-        Assert.NotNull(parent);
+        }));
 
         var before = store.GetAll().Count;
 
@@ -92,19 +94,19 @@ public class CommentsControllerTests
         const string content = "This is a reply.";
 
         // Act
-        var result = controller.PostComment(new Comment
+        var action = controller.PostComment(new Comment
         {
             AuthorId = authorId,
             AuthorName = authorName,
             Content = content,
             ParentId = parent.Id,
         });
+        var result = AssertCreated(action);
 
         // Assert — side effect on the store
         Assert.Equal(before + 1, store.GetAll().Count);
 
         // Assert — returned comment carries input fields
-        Assert.NotNull(result);
         Assert.Equal(authorId, result.AuthorId);
         Assert.Equal(authorName, result.AuthorName);
         Assert.Equal(content, result.Content);
@@ -118,13 +120,13 @@ public class CommentsControllerTests
     }
 
     [Fact]
-    public void PostComment_ReplyToNonExistentParent_DoesNotAddAndReturnsNull()
+    public void PostComment_ReplyToNonExistentParent_Returns400AndDoesNotAdd()
     {
         var store = new CommentStore();
         var controller = new CommentsController(store);
         var before = store.GetAll().Count;
 
-        var result = controller.PostComment(new Comment
+        var action = controller.PostComment(new Comment
         {
             AuthorId = "55555555-5555-5555-5555-555555555555",
             AuthorName = "Anh",
@@ -132,7 +134,17 @@ public class CommentsControllerTests
             ParentId = -1, // intentionally not in the store
         });
 
-        Assert.Null(result);
+        var bad = Assert.IsType<BadRequestObjectResult>(action.Result);
+        Assert.Contains("Parent", bad.Value?.ToString() ?? "");
         Assert.Equal(before, store.GetAll().Count);
+    }
+
+    // ── helper ─────────────────────────────────────────────────────────
+    // Unwraps an ActionResult<Comment> that should be a 201 Created and returns
+    // the underlying Comment. Fails the test with a clear message if not.
+    private static Comment AssertCreated(ActionResult<Comment> action)
+    {
+        var created = Assert.IsType<CreatedAtActionResult>(action.Result);
+        return Assert.IsType<Comment>(created.Value);
     }
 }
