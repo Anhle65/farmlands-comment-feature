@@ -67,4 +67,12 @@ public class CommentStore
         _comments.Add(created);
         return created;
     }
+
+    public bool SoftDelete(int id)
+    {
+        var comment = _comments.FirstOrDefault(c => c.Id == id);
+        if (comment == null) return false;
+        comment.IsDeleted = true;
+        return true;
+    }
 }
