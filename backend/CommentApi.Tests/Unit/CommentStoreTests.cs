@@ -172,4 +172,57 @@ public class CommentStoreTests
         Assert.True(store.GetAll().Single(c => c.Id == drop.Id).IsDeleted);
         Assert.False(store.GetAll().Single(c => c.Id == keep.Id).IsDeleted);
     }
+
+    [Fact]
+    public void Edit_ExistingComment_UpdatesContent()
+    {
+        var store = new CommentStore();
+        var added = store.Add(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Original content.",
+        });
+        var newContent = "Updated content.";
+        var updated = store.EditComment(added.Id, newContent);
+        Assert.NotNull(updated);
+        Assert.Equal(newContent, updated.Content);
+        Assert.Equal(added.Id, updated.Id);
+    }
+
+    [Fact]
+    public void Edit_NonExistentId_ReturnsNullAndChangesNothing()
+    {
+        var store = new CommentStore();
+        var before = store.GetAll().Select(c => c.Content).ToList();
+        var result = store.EditComment(int.MaxValue, "New content");   // id doesn't exist
+        Assert.Null(result);
+        Assert.Equal(before, store.GetAll().Select(c => c.Content).ToList());
+    }
+
+    [Fact]
+    public void Edit_AuthorHasMultipleComments_OnlyTargetedCommentIsEdited()
+    {
+        // Similar to SoftDelete_AuthorHasMultipleComments_OnlyTargetedCommentIsDeleted, this test proves EditComment mutates the row identified by id, not some other row owned by the same author.
+        var store = new CommentStore();
+        var keepComment = store.Add(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "keep comment",
+        });
+        var editComment = store.Add(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "edit comment",
+        });
+        var newContent = "edited content";
+
+        var updated = store.EditComment(editComment.Id, newContent);
+
+        Assert.NotNull(updated);
+        Assert.Equal(newContent, updated.Content);
+        Assert.Equal("keep comment", store.GetAll().Single(c => c.Id == keepComment.Id).Content);
+    }
 }

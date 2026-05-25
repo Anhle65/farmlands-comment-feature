@@ -2,6 +2,7 @@ using CommentApi.Controllers;
 using CommentApi.Data;
 using CommentApi.Models;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.JsonPatch.SystemTextJson;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 namespace CommentApi.Tests.Unit;
@@ -187,6 +188,26 @@ public class CommentsControllerTests
     }
 
     [Fact]
+    public void DeleteComment_SameNameButNotOwner_Returns403AndDoesNotDelete()
+    {
+        var store = new CommentStore();
+        var controller = new CommentsController(store);
+
+        // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
+        var added = AssertCreated(controller.PostComment(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Will not be deleted.",
+        }));
+
+        var result = controller.DeleteComment(added.Id, _notAuthorId, _authorName);   // same name as owner, but different authorId
+        var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
+        Assert.False(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+    }
+
+    [Fact]
     public void DeleteComment_NonExistentId_Returns404AndChangesNothing()
     {
         // returning 204 for a non-existent
@@ -200,5 +221,72 @@ public class CommentsControllerTests
         Assert.Equal(StatusCodes.Status404NotFound, status.StatusCode);
         Assert.Equal(beforeDeleted, store.GetAll().Count(c => c.IsDeleted));
     }
-}
 
+    [Fact]
+    public void PatchComment_OwnerWithinWindow_Returns200AndUpdatesContent()
+    {
+        var store = new CommentStore();
+        var controller = new CommentsController(store);
+
+        // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
+        var addedComment = AssertCreated(controller.PostComment(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Comment will be updated.",
+        }));
+
+        var patchDoc = new JsonPatchDocument<Comment>();
+        patchDoc.Replace(c => c.Content, "Updated content.");
+
+        var result = controller.PatchComment(addedComment.Id, patchDoc, _authorId, _authorName);
+
+        var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
+        Assert.Equal(StatusCodes.Status200OK, status.StatusCode);
+        
+        var updatedComment = store.GetAll().First(c => c.Id == addedComment.Id);
+        Assert.Equal("Updated content.", updatedComment.Content);
+    }
+
+    [Fact]
+    public void PatchComment_NotOwner_Returns403AndDoesNotUpdate()
+    {
+        var store = new CommentStore();
+        var controller = new CommentsController(store);
+        // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
+        var addedComment = AssertCreated(controller.PostComment(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Comment will not be updated.",
+        }));
+        var patchDoc = new JsonPatchDocument<Comment>();
+        patchDoc.Replace(c => c.Content, "Malicious update.");
+        var result = controller.PatchComment(addedComment.Id, patchDoc, _notAuthorId, _notAuthorName);
+        var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
+        var unchangedComment = store.GetAll().First(c => c.Id == addedComment.Id);
+        Assert.Equal("Comment will not be updated.", unchangedComment.Content);
+    }
+
+    [Fact]
+    public void PatchComment_SameNameButNotOwner_Returns403AndDoesNotUpdate()
+    {
+        var store = new CommentStore();
+        var controller = new CommentsController(store);
+
+        var addedComment = AssertCreated(controller.PostComment(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Comment will not be updated.",
+        }));
+        var patchDoc = new JsonPatchDocument<Comment>();
+        patchDoc.Replace(c => c.Content, "Not Owner update.");
+        var result = controller.PatchComment(addedComment.Id, patchDoc, _notAuthorId, _authorName);   // same name as owner, but different authorId
+        var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
+        var unchangedComment = store.GetAll().First(c => c.Id == addedComment.Id);
+        Assert.Equal("Comment will not be updated.", unchangedComment.Content);
+    }
+}
