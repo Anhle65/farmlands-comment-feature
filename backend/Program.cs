@@ -1,4 +1,5 @@
 using CommentApi.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,7 +16,8 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader()
               .AllowAnyMethod());
 });
-
+builder.Services.AddDbContext<CommentDbContext>(options =>
+    options.UseSqlite("Data Source=Comments.db"));
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
