@@ -7,6 +7,11 @@ public class CommentAuthorizationTests
     private const string InvalidAuthorId = "00000000-0000-0000-0000-000000000000";
     private const string ValidAuthorName = "Anh";
     private const string InvalidAuthorName = "Someone";
+    // Fixed instant so "now" and CreatedAt come from the same clock reading —
+    // no race between two DateTimeOffset.UtcNow calls.
+    private static readonly DateTimeOffset Now =
+        new(2026, 5, 25, 12, 0, 0, TimeSpan.Zero);
+
     [Fact]
     public void CheckCanModify_OwnerWithinWindow_ReturnsTrue()
     {
@@ -16,9 +21,9 @@ public class CommentAuthorizationTests
             AuthorId = ValidAuthorId,
             AuthorName = ValidAuthorName,
             Content = "Anything.",
-            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1),   // 1 minute ago — inside window
+            CreatedAt = Now.AddMinutes(-1),   // 1 minute ago — inside window
         };
-        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName);
+        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName, Now);
         Assert.True(canModify);
     }
 
@@ -28,12 +33,12 @@ public class CommentAuthorizationTests
         var comment = new Comment
         {
             Id = 1,
-            AuthorId = ValidAuthorId,       
+            AuthorId = ValidAuthorId,
             AuthorName = ValidAuthorName,
             Content = "Anything.",
-            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5),   // exactly at boundary
+            CreatedAt = Now.AddMinutes(-5),   // exactly at boundary
         };
-        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName);
+        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName, Now);
         Assert.True(canModify);
     }
 
@@ -46,9 +51,9 @@ public class CommentAuthorizationTests
             AuthorId = ValidAuthorId,
             AuthorName = ValidAuthorName,
             Content = "Anything.",
-            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-6),   // 6 minutes ago — outside window
+            CreatedAt = Now.AddMinutes(-6),   // 6 minutes ago — outside window
         };
-        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName);
+        var canModify = CommentAuthorization.CheckCanModify(comment, ValidAuthorId, ValidAuthorName, Now);
         Assert.False(canModify);
     }
 
@@ -61,9 +66,9 @@ public class CommentAuthorizationTests
             AuthorId = ValidAuthorId,
             AuthorName = ValidAuthorName,
             Content = "Anything.",
-            CreatedAt = DateTimeOffset.UtcNow,   // right now — inside window, but requester isn't owner
+            CreatedAt = Now,   // right now — inside window, but requester isn't owner
         };
-        var canModify = CommentAuthorization.CheckCanModify(comment, InvalidAuthorId, InvalidAuthorName);
+        var canModify = CommentAuthorization.CheckCanModify(comment, InvalidAuthorId, InvalidAuthorName, Now);
         Assert.False(canModify);
     }
 }
