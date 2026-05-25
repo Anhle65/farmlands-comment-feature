@@ -7,6 +7,10 @@ namespace CommentApi.Tests.Unit;
 
 public class CommentsControllerTests
 {
+    private string _authorId = "55555555-5555-5555-5555-555555555555";
+    private string _authorName = "Anh";
+    private string _notAuthorId = "00000000-0000-0000-0000-000000000000";
+    private string _notAuthorName = "Someone";
     [Fact]
     public void GetComments_ReturnsAllStoreComments()
     {
@@ -41,16 +45,12 @@ public class CommentsControllerTests
         var controller = new CommentsController(store);
         var before = store.GetAll().Count;
 
-        const string authorId = "55555555-5555-5555-5555-555555555555";
-        const string authorName = "Anh";
-        const string content = "This is a new comment.";
-
         // Act
         var action = controller.PostComment(new Comment
         {
-            AuthorId = authorId,
-            AuthorName = authorName,
-            Content = content,
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "This is a new comment.",
         });
 
         // Assert — unwrap the 201 Created result
@@ -60,9 +60,9 @@ public class CommentsControllerTests
         Assert.Equal(before + 1, store.GetAll().Count);
 
         // Assert — returned comment carries input fields
-        Assert.Equal(authorId, result.AuthorId);
-        Assert.Equal(authorName, result.AuthorName);
-        Assert.Equal(content, result.Content);
+        Assert.Equal(_authorId, result.AuthorId);
+        Assert.Equal(_authorName, result.AuthorName);
+        Assert.Equal("This is a new comment.", result.Content);
 
         // Assert — server-controlled fields are populated by the controller, not the client
         Assert.True(result.Id > 0, "Id should be assigned by the server");
@@ -82,23 +82,19 @@ public class CommentsControllerTests
         // Create the parent in this test so the assertion doesn't depend on the seed
         var parent = AssertCreated(controller.PostComment(new Comment
         {
-            AuthorId = "55555555-5555-5555-5555-555555555555",
-            AuthorName = "Anh",
+            AuthorId = _authorId,
+            AuthorName = _authorName,
             Content = "Parent comment.",
         }));
 
         var before = store.GetAll().Count;
 
-        const string authorId = "55555555-5555-5555-5555-555555555555";
-        const string authorName = "Anh";
-        const string content = "This is a reply.";
-
         // Act
         var action = controller.PostComment(new Comment
         {
-            AuthorId = authorId,
-            AuthorName = authorName,
-            Content = content,
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "This is a reply.",
             ParentId = parent.Id,
         });
         var result = AssertCreated(action);
@@ -107,9 +103,9 @@ public class CommentsControllerTests
         Assert.Equal(before + 1, store.GetAll().Count);
 
         // Assert — returned comment carries input fields
-        Assert.Equal(authorId, result.AuthorId);
-        Assert.Equal(authorName, result.AuthorName);
-        Assert.Equal(content, result.Content);
+        Assert.Equal(_authorId, result.AuthorId);
+        Assert.Equal(_authorName, result.AuthorName);
+        Assert.Equal("This is a reply.", result.Content);
 
         // Assert — server-controlled fields are populated by the controller, not the client
         Assert.True(result.Id > 0, "Id should be assigned by the server");
@@ -128,8 +124,8 @@ public class CommentsControllerTests
 
         var action = controller.PostComment(new Comment
         {
-            AuthorId = "55555555-5555-5555-5555-555555555555",
-            AuthorName = "Anh",
+            AuthorId = _authorId,
+            AuthorName = _authorName,
             Content = "Reply to a parent that doesn't exist.",
             ParentId = -1, // intentionally not in the store
         });
@@ -147,4 +143,43 @@ public class CommentsControllerTests
         var created = Assert.IsType<CreatedAtActionResult>(action.Result);
         return Assert.IsType<Comment>(created.Value);
     }
+
+    [Fact]
+    public void DeleteComment_OwnerWithinWindow_Returns204AndSoftDeletes()
+    {
+        var store = new CommentStore();
+        var controller = new CommentsController(store);
+
+        // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
+        var added = AssertCreated(controller.PostComment(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Will be deleted.",
+        }));
+
+        var result = controller.DeleteComment(added.Id, _authorId, _authorName);
+
+        Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+    }
+
+    [Fact]
+    public void DeleteComment_NotOwner_Returns403AndDoesNotDelete()
+    {
+        var store = new CommentStore();
+        var controller = new CommentsController(store);
+
+        // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
+        var added = AssertCreated(controller.PostComment(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Will not be deleted.",
+        }));
+
+        var result = controller.DeleteComment(added.Id, _notAuthorId, _notAuthorName);
+
+        Assert.False(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+    }
 }
+

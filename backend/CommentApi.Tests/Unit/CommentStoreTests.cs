@@ -7,6 +7,8 @@ public class CommentStoreTests
 {
     private const string _authorId = "55555555-5555-5555-5555-555555555555";
     private const string _authorName = "Anh";
+    private const string _notAuthorId = "00000000-0000-0000-0000-000000000000";
+    private const string _notAuthorName = "Someone";
     [Fact]
     public void GetAll_ReturnsSeededComments()
     {
@@ -114,7 +116,7 @@ public class CommentStoreTests
             AuthorName = _authorName,
             Content = "Will be deleted.",
         });
-        var deleted = store.SoftDelete(added.Id);
+        var deleted = store.SoftDelete(added.AuthorId, added.AuthorName);
         Assert.True(deleted);
         Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
@@ -124,7 +126,7 @@ public class CommentStoreTests
     {
         var store = new CommentStore();
         var before = store.GetAll().Count(c => c.IsDeleted);
-        var result = store.SoftDelete(-1);   // an Id that doesn't exist
+        var result = store.SoftDelete(_notAuthorId, _notAuthorName);   // an Id that doesn't exist
         Assert.False(result);
         Assert.Equal(before, store.GetAll().Count(c => c.IsDeleted));
     }
@@ -139,10 +141,10 @@ public class CommentStoreTests
             AuthorName = _authorName,
             Content = "Will be deleted twice.",
         });
-        var firstDelete = store.SoftDelete(added.Id);
+        var firstDelete = store.SoftDelete(added.AuthorId, added.AuthorName);
         Assert.True(firstDelete);
         Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
-        var secondDelete = store.SoftDelete(added.Id);
+        var secondDelete = store.SoftDelete(added.AuthorId, added.AuthorName);
         Assert.True(secondDelete);
         Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
