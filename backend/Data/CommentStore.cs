@@ -68,6 +68,8 @@ public class CommentStore
         return created;
     }
 
+    // Persistence only. Authorization (owner + 5-minute window) lives in
+    // CommentAuthorization.CheckCanModify and is enforced by the controller.
     public bool SoftDelete(int id)
     {
         var comment = _comments.FirstOrDefault(c => c.Id == id);

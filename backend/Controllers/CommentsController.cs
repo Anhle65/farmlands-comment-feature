@@ -1,3 +1,4 @@
+using CommentApi.Authorization;
 using CommentApi.Data;
 using CommentApi.Models;
 using CommentApi.Validation;
@@ -40,5 +41,22 @@ public class CommentsController : ControllerBase
         // 3. Persist — store stamps Id, CreatedAt, defaults
         var created = _store.Add(input);
         return CreatedAtAction(nameof(GetComments), value: created);
+    }
+
+    [HttpDelete("{id}")]
+    public ActionResult DeleteComment(
+        int id,
+        [FromHeader(Name = "X-Author-Id")] string authorId,
+        [FromHeader(Name = "X-Author-Name")] string authorName)
+    {
+        var comment = _store.GetAll().FirstOrDefault(c => c.Id == id);
+        if (comment is null)
+            return NotFound($"Comment with id {id} does not exist");
+
+        if (!CommentAuthorization.CheckCanModify(comment, authorId, authorName, DateTimeOffset.UtcNow))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        _store.SoftDelete(id);
+        return NoContent();
     }
 }
