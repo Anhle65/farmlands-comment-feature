@@ -1,91 +1,63 @@
 using CommentApi.Data;
 using CommentApi.Models;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace CommentApi.Tests.Unit;
 
-public class CommentStoreTests
+public class CommentStoreTests: IDisposable
 {
     private const string _authorId = "55555555-5555-5555-5555-555555555555";
     private const string _authorName = "Anh";
-    [Fact]
-    public void GetAll_ReturnsSeededComments()
-    {
-        var store = new CommentStore();
+    private readonly CommentStore _store;
+    private readonly CommentDbContext _db;
+    private readonly SqliteConnection _connection;
 
-        Assert.NotEmpty(store.GetAll());
+    public CommentStoreTests()
+    {
+        _connection = new SqliteConnection("Data Source=:memory:");
+        _connection.Open();
+        var options = new DbContextOptionsBuilder<CommentDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+        _db = new CommentDbContext(options);
+        _db.Database.EnsureCreated();
+        _store = new CommentStore(_db);
     }
 
     [Fact]
-    public void GetAll_AllCommentsHaveRequiredFields()
+    public void GetAll_AfterSoftDelete_StillReturnsTheRow()
     {
-        var store = new CommentStore();
-
-        foreach (var c in store.GetAll())
+        // Soft delete is a flag flip, not a row removal — the row must remain visible
+        // in GetAll so replies under a deleted parent still render.
+        var added = _store.Add(new Comment
         {
-            Assert.NotEqual(0, c.Id);
-            Assert.False(string.IsNullOrWhiteSpace(c.AuthorId), $"Comment {c.Id} has empty AuthorId");
-            Assert.False(string.IsNullOrWhiteSpace(c.AuthorName), $"Comment {c.Id} has empty AuthorName");
-            Assert.False(string.IsNullOrWhiteSpace(c.Content), $"Comment {c.Id} has empty Content");
-            Assert.NotEqual(default, c.CreatedAt);
-        }
-    }
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "Soft delete should not remove from GetAll",
+        });
+        _store.SoftDelete(added.Id);
 
-    [Fact]
-    public void GetAll_IncludesSoftDeletedComment()
-    {
-        // The seed should exercise the IsDeleted case so downstream behaviour (e.g. "[deleted]"
-        // rendering, replies-survive-parent-delete) has data to act on.
-        var store = new CommentStore();
-
-        Assert.Contains(store.GetAll(), c => c.IsDeleted);
-    }
-
-    [Fact]
-    public void GetAll_IncludesReply()
-    {
-        // The seed should exercise the reply case (ParentId != null) for the same reason.
-        var store = new CommentStore();
-
-        Assert.Contains(store.GetAll(), c => c.ParentId != null);
-    }
-
-    [Fact]
-    public void GetAll_EachAuthorIdMapsToExactlyOneName()
-    {
-        // Integrity invariant: one identity (AuthorId) must always carry the same display name.
-        // Catches mock-data drift where the same AuthorId ends up paired with two different
-        // AuthorName values — which would be contradictory data.
-        var store = new CommentStore();
-
-        var conflicts = store.GetAll()
-            .GroupBy(c => c.AuthorId)
-            .Where(g => g.Select(c => c.AuthorName).Distinct().Count() > 1)
-            .Select(g => $"{g.Key} -> [{string.Join(", ", g.Select(c => c.AuthorName).Distinct())}]")
-            .ToList();
-
-        Assert.True(conflicts.Count == 0,
-            $"AuthorId(s) map to multiple names: {string.Join("; ", conflicts)}");
+        Assert.Contains(_store.GetAll(), c => c.Id == added.Id && c.IsDeleted);
     }
 
     [Fact]
     public void Add_NewComment_AppendsToStore()
     {
-        var store = new CommentStore();
-        var before = store.GetAll().Count;
-        store.Add(new Comment
+        var before = _store.GetAll().Count;
+        _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
             Content = "This is a new comment.",
         });
-        Assert.Equal(before + 1, store.GetAll().Count);
+        Assert.Equal(before + 1, _store.GetAll().Count);
     }
 
     [Fact]
     public void Add_ReplyWithParentId_PreservesParentId()
     {
-        var store = new CommentStore();
-        var parentComment = store.Add(new Comment
+        var parentComment = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
@@ -93,7 +65,7 @@ public class CommentStoreTests
         });
         Assert.NotNull(parentComment);
 
-        var replyComment = store.Add(new Comment
+        var replyComment = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
@@ -107,44 +79,41 @@ public class CommentStoreTests
     [Fact]
     public void SoftDelete_ExistingComment_SetsIsDeletedTrue()
     {
-        var store = new CommentStore();
-        var added = store.Add(new Comment
+        var added = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
             Content = "Will be deleted.",
         });
-        var deleted = store.SoftDelete(added.Id);
+        var deleted = _store.SoftDelete(added.Id);
         Assert.True(deleted);
-        Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+        Assert.True(_store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
 
     [Fact]
     public void SoftDelete_NonExistentId_ReturnsFalseAndChangesNothing()
     {
-        var store = new CommentStore();
-        var before = store.GetAll().Count(c => c.IsDeleted);
-        var result = store.SoftDelete(int.MaxValue);   // id doesn't exist
+        var before = _store.GetAll().Count(c => c.IsDeleted);
+        var result = _store.SoftDelete(int.MaxValue);   // id doesn't exist
         Assert.False(result);
-        Assert.Equal(before, store.GetAll().Count(c => c.IsDeleted));
+        Assert.Equal(before, _store.GetAll().Count(c => c.IsDeleted));
     }
 
     [Fact]
     public void SoftDelete_AlreadyDeletedComment_RemainsDeleted()
     {
-        var store = new CommentStore();
-        var added = store.Add(new Comment
+        var added = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
             Content = "Will be deleted twice.",
         });
-        var firstDelete = store.SoftDelete(added.Id);
+        var firstDelete = _store.SoftDelete(added.Id);
         Assert.True(firstDelete);
-        Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
-        var secondDelete = store.SoftDelete(added.Id);
+        Assert.True(_store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+        var secondDelete = _store.SoftDelete(added.Id);
         Assert.True(secondDelete);
-        Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+        Assert.True(_store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
 
     [Fact]
@@ -152,39 +121,37 @@ public class CommentStoreTests
     {
         // Authorization is tested separately in CommentAuthorizationTests; 
         // this test only proves the store mutates the row identified by id, not some other row owned by the same author.
-        var store = new CommentStore();
-        var keep = store.Add(new Comment
+        var keep = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
             Content = "keep me",
         });
-        var drop = store.Add(new Comment
+        var drop = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
             Content = "delete me",
         });
 
-        var ok = store.SoftDelete(drop.Id);
+        var ok = _store.SoftDelete(drop.Id);
 
         Assert.True(ok);
-        Assert.True(store.GetAll().Single(c => c.Id == drop.Id).IsDeleted);
-        Assert.False(store.GetAll().Single(c => c.Id == keep.Id).IsDeleted);
+        Assert.True(_store.GetAll().Single(c => c.Id == drop.Id).IsDeleted);
+        Assert.False(_store.GetAll().Single(c => c.Id == keep.Id).IsDeleted);
     }
 
     [Fact]
     public void Edit_ExistingComment_UpdatesContent()
     {
-        var store = new CommentStore();
-        var added = store.Add(new Comment
+        var added = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
             Content = "Original content.",
         });
         var newContent = "Updated content.";
-        var updated = store.EditComment(added.Id, newContent);
+        var updated = _store.EditComment(added.Id, newContent);
         Assert.NotNull(updated);
         Assert.Equal(newContent, updated.Content);
         Assert.Equal(added.Id, updated.Id);
@@ -193,25 +160,23 @@ public class CommentStoreTests
     [Fact]
     public void Edit_NonExistentId_ReturnsNullAndChangesNothing()
     {
-        var store = new CommentStore();
-        var before = store.GetAll().Select(c => c.Content).ToList();
-        var result = store.EditComment(int.MaxValue, "New content");   // id doesn't exist
+        var before = _store.GetAll().Select(c => c.Content).ToList();
+        var result = _store.EditComment(int.MaxValue, "New content");   // id doesn't exist
         Assert.Null(result);
-        Assert.Equal(before, store.GetAll().Select(c => c.Content).ToList());
+        Assert.Equal(before, _store.GetAll().Select(c => c.Content).ToList());
     }
 
     [Fact]
     public void Edit_AuthorHasMultipleComments_OnlyTargetedCommentIsEdited()
     {
         // Similar to SoftDelete_AuthorHasMultipleComments_OnlyTargetedCommentIsDeleted, this test proves EditComment mutates the row identified by id, not some other row owned by the same author.
-        var store = new CommentStore();
-        var keepComment = store.Add(new Comment
+        var keepComment = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
             Content = "keep comment",
         });
-        var editComment = store.Add(new Comment
+        var editComment = _store.Add(new Comment
         {
             AuthorId = _authorId,
             AuthorName = _authorName,
@@ -219,10 +184,16 @@ public class CommentStoreTests
         });
         var newContent = "edited content";
 
-        var updated = store.EditComment(editComment.Id, newContent);
+        var updated = _store.EditComment(editComment.Id, newContent);
 
         Assert.NotNull(updated);
         Assert.Equal(newContent, updated.Content);
-        Assert.Equal("keep comment", store.GetAll().Single(c => c.Id == keepComment.Id).Content);
+        Assert.Equal("keep comment", _store.GetAll().Single(c => c.Id == keepComment.Id).Content);
+    }
+
+    public void Dispose()
+    {
+        _db.Dispose();
+        _connection.Dispose();
     }
 }

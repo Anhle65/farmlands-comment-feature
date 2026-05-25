@@ -5,29 +5,44 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.JsonPatch.SystemTextJson;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 namespace CommentApi.Tests.Unit;
 
-public class CommentsControllerTests
+public class CommentsControllerTests: IDisposable
 {
     private string _authorId = "55555555-5555-5555-5555-555555555555";
     private string _authorName = "Anh";
     private string _notAuthorId = "00000000-0000-0000-0000-000000000000";
     private string _notAuthorName = "Someone";
+    private readonly CommentStore _store;
+    private readonly CommentDbContext _db;
+    private readonly SqliteConnection _connection;
+    public CommentsControllerTests()
+    {
+        _connection = new SqliteConnection("Data Source=:memory:");
+        _connection.Open();
+        var options = new DbContextOptionsBuilder<CommentDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+        _db = new CommentDbContext(options);
+        _db.Database.EnsureCreated();
+        _store = new CommentStore(_db);
+    }
     [Fact]
     public void GetComments_ReturnsAllStoreComments()
     {
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
+        var controller = new CommentsController(_store);
 
         var result = controller.GetComments().ToList();
 
-        Assert.Equal(store.GetAll().Count, result.Count);
+        Assert.Equal(_store.GetAll().Count, result.Count);
     }
 
     [Fact]
     public void GetComments_OrdersByCreatedAtDescending()
     {
-        var controller = new CommentsController(new CommentStore());
+        var controller = new CommentsController(_store);
 
         var result = controller.GetComments().ToList();
 
@@ -43,9 +58,8 @@ public class CommentsControllerTests
     public void PostComment_ValidInput_AddsToStoreAndReturns201Created()
     {
         // Arrange
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
-        var before = store.GetAll().Count;
+        var controller = new CommentsController(_store);
+        var before = _store.GetAll().Count;
 
         // Act
         var action = controller.PostComment(new Comment
@@ -59,7 +73,7 @@ public class CommentsControllerTests
         var result = AssertCreated(action);
 
         // Assert — side effect on the store
-        Assert.Equal(before + 1, store.GetAll().Count);
+        Assert.Equal(before + 1, _store.GetAll().Count);
 
         // Assert — returned comment carries input fields
         Assert.Equal(_authorId, result.AuthorId);
@@ -78,8 +92,7 @@ public class CommentsControllerTests
     public void PostComment_ValidReply_AddsToStoreAndReturns201Created()
     {
         // Arrange
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
+        var controller = new CommentsController(_store);
 
         // Create the parent in this test so the assertion doesn't depend on the seed
         var parent = AssertCreated(controller.PostComment(new Comment
@@ -89,7 +102,7 @@ public class CommentsControllerTests
             Content = "Parent comment.",
         }));
 
-        var before = store.GetAll().Count;
+        var before = _store.GetAll().Count;
 
         // Act
         var action = controller.PostComment(new Comment
@@ -102,7 +115,7 @@ public class CommentsControllerTests
         var result = AssertCreated(action);
 
         // Assert — side effect on the store
-        Assert.Equal(before + 1, store.GetAll().Count);
+        Assert.Equal(before + 1, _store.GetAll().Count);
 
         // Assert — returned comment carries input fields
         Assert.Equal(_authorId, result.AuthorId);
@@ -120,9 +133,8 @@ public class CommentsControllerTests
     [Fact]
     public void PostComment_ReplyToNonExistentParent_Returns400AndDoesNotAdd()
     {
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
-        var before = store.GetAll().Count;
+        var controller = new CommentsController(_store);
+        var before = _store.GetAll().Count;
 
         var action = controller.PostComment(new Comment
         {
@@ -135,7 +147,7 @@ public class CommentsControllerTests
         var bad = Assert.IsType<BadRequestObjectResult>(action.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, bad.StatusCode);
         Assert.Contains("Parent", bad.Value?.ToString() ?? "");
-        Assert.Equal(before, store.GetAll().Count);
+        Assert.Equal(before, _store.GetAll().Count);
     }
 
     // ── helper ─────────────────────────────────────────────────────────
@@ -150,8 +162,7 @@ public class CommentsControllerTests
     [Fact]
     public void DeleteComment_OwnerWithinWindow_Returns204AndSoftDeletes()
     {
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
+        var controller = new CommentsController(_store);
 
         // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
         var added = AssertCreated(controller.PostComment(new Comment
@@ -164,14 +175,13 @@ public class CommentsControllerTests
         var result = controller.DeleteComment(added.Id, _authorId, _authorName);
         var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
         Assert.Equal(StatusCodes.Status204NoContent, status.StatusCode);
-        Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+        Assert.True(_store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
 
     [Fact]
     public void DeleteComment_NotOwner_Returns403AndDoesNotDelete()
     {
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
+        var controller = new CommentsController(_store);
 
         // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
         var added = AssertCreated(controller.PostComment(new Comment
@@ -184,14 +194,13 @@ public class CommentsControllerTests
         var result = controller.DeleteComment(added.Id, _notAuthorId, _notAuthorName);
         var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
-        Assert.False(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+        Assert.False(_store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
 
     [Fact]
     public void DeleteComment_SameNameButNotOwner_Returns403AndDoesNotDelete()
     {
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
+        var controller = new CommentsController(_store);
 
         // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
         var added = AssertCreated(controller.PostComment(new Comment
@@ -204,7 +213,7 @@ public class CommentsControllerTests
         var result = controller.DeleteComment(added.Id, _notAuthorId, _authorName);   // same name as owner, but different authorId
         var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
-        Assert.False(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+        Assert.False(_store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
 
     [Fact]
@@ -212,21 +221,19 @@ public class CommentsControllerTests
     {
         // returning 204 for a non-existent
         // id would silently pass (flipping IsDeleted on nothing is a no-op).
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
-        var beforeDeleted = store.GetAll().Count(c => c.IsDeleted);
+        var controller = new CommentsController(_store);
+        var beforeDeleted = _store.GetAll().Count(c => c.IsDeleted);
 
         var result = controller.DeleteComment(int.MaxValue, _authorId, _authorName);
         var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, status.StatusCode);
-        Assert.Equal(beforeDeleted, store.GetAll().Count(c => c.IsDeleted));
+        Assert.Equal(beforeDeleted, _store.GetAll().Count(c => c.IsDeleted));
     }
 
     [Fact]
     public void PatchComment_OwnerWithinWindow_Returns200AndUpdatesContent()
     {
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
+        var controller = new CommentsController(_store);
 
         // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
         var addedComment = AssertCreated(controller.PostComment(new Comment
@@ -244,15 +251,14 @@ public class CommentsControllerTests
         var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
         Assert.Equal(StatusCodes.Status200OK, status.StatusCode);
         
-        var updatedComment = store.GetAll().First(c => c.Id == addedComment.Id);
+        var updatedComment = _store.GetAll().First(c => c.Id == addedComment.Id);
         Assert.Equal("Updated content.", updatedComment.Content);
     }
 
     [Fact]
     public void PatchComment_NotOwner_Returns403AndDoesNotUpdate()
     {
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
+        var controller = new CommentsController(_store);
         // Create a comment via the real flow — fresh CreatedAt is automatically inside the window
         var addedComment = AssertCreated(controller.PostComment(new Comment
         {
@@ -265,15 +271,14 @@ public class CommentsControllerTests
         var result = controller.PatchComment(addedComment.Id, patchDoc, _notAuthorId, _notAuthorName);
         var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
-        var unchangedComment = store.GetAll().First(c => c.Id == addedComment.Id);
+        var unchangedComment = _store.GetAll().First(c => c.Id == addedComment.Id);
         Assert.Equal("Comment will not be updated.", unchangedComment.Content);
     }
 
     [Fact]
     public void PatchComment_SameNameButNotOwner_Returns403AndDoesNotUpdate()
     {
-        var store = new CommentStore();
-        var controller = new CommentsController(store);
+        var controller = new CommentsController(_store);
 
         var addedComment = AssertCreated(controller.PostComment(new Comment
         {
@@ -286,7 +291,13 @@ public class CommentsControllerTests
         var result = controller.PatchComment(addedComment.Id, patchDoc, _notAuthorId, _authorName);   // same name as owner, but different authorId
         var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
-        var unchangedComment = store.GetAll().First(c => c.Id == addedComment.Id);
+        var unchangedComment = _store.GetAll().First(c => c.Id == addedComment.Id);
         Assert.Equal("Comment will not be updated.", unchangedComment.Content);
+    }
+
+    public void Dispose()
+    {
+        _db.Dispose();
+        _connection.Dispose();
     }
 }
