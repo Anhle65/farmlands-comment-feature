@@ -77,4 +77,13 @@ public class CommentStore
         comment.IsDeleted = true;
         return true;
     }
+
+    public Comment? EditComment(int id, string newContent)
+    {
+        var comment = _comments.FirstOrDefault(c => c.Id == id);
+        if (comment == null) return null;
+        comment.Content = newContent;
+        comment.UpdatedAt = DateTimeOffset.UtcNow;
+        return comment;
+    }
 }

@@ -46,8 +46,8 @@ public class CommentsController : ControllerBase
     [HttpDelete("{id}")]
     public ActionResult DeleteComment(
         int id,
-        [FromHeader(Name = "X-Author-Id")] string authorId,
-        [FromHeader(Name = "X-Author-Name")] string authorName)
+        [FromHeader(Name = "X-AuthorId")] string authorId,
+        [FromHeader(Name = "X-AuthorName")] string authorName)
     {
         var comment = _store.GetAll().FirstOrDefault(c => c.Id == id);
         if (comment is null)
@@ -58,5 +58,39 @@ public class CommentsController : ControllerBase
 
         _store.SoftDelete(id);
         return NoContent();
+    }
+
+    [HttpPatch("{id}")]
+    public ActionResult PatchComment(
+        int id,
+        [FromBody] Microsoft.AspNetCore.JsonPatch.SystemTextJson.JsonPatchDocument<Comment> patchDoc,
+        [FromHeader(Name = "X-AuthorId")] string authorId,
+        [FromHeader(Name = "X-AuthorName")] string authorName)
+    {
+        var comment = _store.GetAll().FirstOrDefault(c => c.Id == id);
+        if (comment is null)
+            return NotFound($"Comment with id {id} does not exist");
+
+        if (!CommentAuthorization.CheckCanModify(comment, authorId, authorName, DateTimeOffset.UtcNow))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        // Apply the patch to a copy of the comment to validate before mutating store data
+        var commentCopy = new Comment
+        {
+            Id = comment.Id,
+            AuthorId = comment.AuthorId,
+            AuthorName = comment.AuthorName,
+            Content = comment.Content,
+            CreatedAt = comment.CreatedAt,
+            ParentId = comment.ParentId,
+            UpdatedAt = comment.UpdatedAt,
+            IsDeleted = comment.IsDeleted,
+        };
+        patchDoc.ApplyTo(commentCopy);
+        var error = CommentValidator.Validate(commentCopy);
+        if (error is not null) return BadRequest(error);
+
+        var updated = _store.EditComment(id, commentCopy.Content);
+        return Ok(updated); 
     }
 }
