@@ -1,8 +1,9 @@
 using CommentApi.Controllers;
 using CommentApi.Data;
 using CommentApi.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 namespace CommentApi.Tests.Unit;
 
 public class CommentsControllerTests
@@ -131,6 +132,7 @@ public class CommentsControllerTests
         });
 
         var bad = Assert.IsType<BadRequestObjectResult>(action.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, bad.StatusCode);
         Assert.Contains("Parent", bad.Value?.ToString() ?? "");
         Assert.Equal(before, store.GetAll().Count);
     }
@@ -159,7 +161,8 @@ public class CommentsControllerTests
         }));
 
         var result = controller.DeleteComment(added.Id, _authorId, _authorName);
-
+        var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
+        Assert.Equal(StatusCodes.Status204NoContent, status.StatusCode);
         Assert.True(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
     }
 
@@ -178,8 +181,24 @@ public class CommentsControllerTests
         }));
 
         var result = controller.DeleteComment(added.Id, _notAuthorId, _notAuthorName);
-
+        var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, status.StatusCode);
         Assert.False(store.GetAll().First(c => c.Id == added.Id).IsDeleted);
+    }
+
+    [Fact]
+    public void DeleteComment_NonExistentId_Returns404AndChangesNothing()
+    {
+        // returning 204 for a non-existent
+        // id would silently pass (flipping IsDeleted on nothing is a no-op).
+        var store = new CommentStore();
+        var controller = new CommentsController(store);
+        var beforeDeleted = store.GetAll().Count(c => c.IsDeleted);
+
+        var result = controller.DeleteComment(int.MaxValue, _authorId, _authorName);
+        var status = Assert.IsAssignableFrom<IStatusCodeActionResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, status.StatusCode);
+        Assert.Equal(beforeDeleted, store.GetAll().Count(c => c.IsDeleted));
     }
 }
 
