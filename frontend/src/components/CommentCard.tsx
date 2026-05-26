@@ -218,15 +218,10 @@ const CommentCard = (props: ICommentCardProps) => {
             : "Replied to deleted comment"
         : undefined;
 
-    return (
-        <Card sx={cardSx}>
+    const card = (
+        <Card sx={{ ...cardSx, ml: 0, flex: 1 }}>
             <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
-                    {isReply && (
-                        <Typography variant="caption" color="text.secondary" aria-hidden>
-                            ↳
-                        </Typography>
-                    )}
                     <Typography
                         variant="caption"
                         component="div"
@@ -415,6 +410,24 @@ const CommentCard = (props: ICommentCardProps) => {
             </CardContent>
         </Card>
     );
+
+    if (isReply) {
+        return (
+            <Box sx={{ display: "flex", alignItems: "flex-start", ml: 2 }}>
+                <Typography
+                    component="span"
+                    color="text.secondary"
+                    aria-hidden
+                    sx={{ pt: 1.5, pr: 1, fontSize: "1.1rem", lineHeight: 1 }}
+                >
+                    ↳
+                </Typography>
+                {card}
+            </Box>
+        );
+    }
+
+    return card;
 };
 
 export default CommentCard;
