@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { Alert, Box, Button, Stack, TextField, Typography } from '@mui/material';
 import { deleteComment, fetchComments, patchComment, postComment } from '../api';
 import type { Comment } from '../types';
 import CommentCard from './CommentCard';
@@ -24,7 +25,9 @@ export function CommentList() {
   }, []);
 
   const { topLevel, repliesByParent } = useMemo(() => {
-    const topLevel = comments.filter((c) => c.parentId === null);
+    const topLevel = comments
+      .filter((c) => c.parentId === null)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const repliesByParent = new Map<number, Comment[]>();
     for (const c of comments) {
       if (c.parentId === null) continue;
@@ -53,13 +56,10 @@ export function CommentList() {
   const now = new Date();
 
   const [isAdding, setIsAdding] = useState(false);
+  const [addName, setAddName] = useState('');
   const [addDraft, setAddDraft] = useState('');
-
-  const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const name = e.target.value;
-    setCurrentUserName(name);
-    localStorage.setItem('userName', name);
-  };
+  const [addError, setAddError] = useState('');
+  const [addErrorFlag, setAddErrorFlag] = useState(false);
 
   const handleEdit = async (id: number, content: string) => {
     const updated = await patchComment(id, content, currentUserId, currentUserName);
@@ -67,121 +67,193 @@ export function CommentList() {
   };
   const handleDelete = async (id: number) => {
     await deleteComment(id, currentUserId, currentUserName);
-    setComments((prev) => prev.filter((c) => c.id !== id));
+    setComments((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, isDeleted: true } : c)),
+    );
   };
-  const handlePost = async (parentId: number | null, content: string) => {
+  const handlePost = async (parentId: number | null, name: string, content: string) => {
+    setCurrentUserName(name);
+    localStorage.setItem('userName', name);
     const created = await postComment({
       authorId: currentUserId,
-      authorName: currentUserName,
+      authorName: name,
       content,
       parentId,
     });
     setComments((prev) => [...prev, created]);
   };
 
+  const updateAddNameState = (event: ChangeEvent<HTMLInputElement>) => {
+    setAddName(event.target.value);
+    setAddError('');
+    setAddErrorFlag(false);
+  };
+  const updateAddContentState = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setAddDraft(event.target.value);
+    setAddError('');
+    setAddErrorFlag(false);
+  };
+
   const handleAddOpen = () => {
+    setAddName(currentUserName);
     setAddDraft('');
+    setAddError('');
+    setAddErrorFlag(false);
     setIsAdding(true);
   };
   const handleAddCancel = () => {
     setIsAdding(false);
+    setAddName('');
     setAddDraft('');
+    setAddError('');
+    setAddErrorFlag(false);
   };
-  const handleAddSubmit = async () => {
-    await handlePost(null, addDraft.trim());
-    setIsAdding(false);
-    setAddDraft('');
+  const onAddSubmit = async () => {
+    setAddError('');
+    setAddErrorFlag(false);
+    if (addName.trim().length === 0) {
+      setAddError('Name can not be empty');
+      setAddErrorFlag(true);
+      return;
+    }
+    if (addDraft.trim().length === 0) {
+      setAddError('Comment can not be empty');
+      setAddErrorFlag(true);
+      return;
+    }
+    if (addDraft.length > MAX_LENGTH) {
+      setAddError(`Comment must be under ${MAX_LENGTH} characters`);
+      setAddErrorFlag(true);
+      return;
+    }
+    try {
+      await handlePost(null, addName.trim(), addDraft.trim());
+      setIsAdding(false);
+      setAddName('');
+      setAddDraft('');
+    } catch (error) {
+      console.error(error);
+      setAddError('Failed to post comment');
+      setAddErrorFlag(true);
+    }
   };
-
-  const addTrimmed = addDraft.trim();
-  const addDisabled =
-    currentUserName.trim().length === 0 ||
-    addTrimmed.length === 0 ||
-    addDraft.length > MAX_LENGTH;
 
   return (
     <>
-      <div className="comment-list-header">
-        <h2>Comments: {status === 'ready' ? `(${comments.length})` : ''}</h2>
+      <Stack
+        direction="row"
+        sx={{ px: 4, mt: 3, alignItems: 'center', justifyContent: 'space-between' }}
+      >
+        <Typography variant="h5" component="h2">
+          Comments: {status === 'ready' ? `(${comments.filter((c) => !c.isDeleted).length})` : ''}
+        </Typography>
         {!isAdding && (
-          <button
-            type="button"
-            onClick={handleAddOpen}
-            disabled={currentUserName.trim().length === 0}
-            title={
-              currentUserName.trim().length === 0
-                ? 'Enter your name to comment'
-                : undefined
-            }
-          >
+          <Button variant="contained" onClick={handleAddOpen}>
             Add comment
-          </button>
+          </Button>
         )}
-      </div>
+      </Stack>
       {isAdding && (
-        <div className="comment-add-form">
-          <textarea
-            autoFocus
-            placeholder="Write a comment…"
-            value={addDraft}
-            onChange={(e) => setAddDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') handleAddCancel();
-            }}
-          />
-          <p className="comment-counter">
-            {addDraft.length} / {MAX_LENGTH}
-          </p>
-          <div className="comment-actions">
-            <button type="button" disabled={addDisabled} onClick={handleAddSubmit}>
-              Submit
-            </button>
-            <button type="button" onClick={handleAddCancel}>
-              Cancel
-            </button>
-          </div>
-        </div>
+        <Box
+          component="form"
+          sx={{
+            mx: 4,
+            my: 2,
+            p: 2,
+            textAlign: 'left',
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 1,
+          }}
+        >
+          <Stack direction="column" spacing={2}>
+            {addErrorFlag && <Alert severity="error">{addError}</Alert>}
+            <TextField
+              fullWidth
+              required
+              autoFocus
+              id="add-name"
+              label="Your name"
+              value={addName}
+              onChange={updateAddNameState}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') handleAddCancel();
+              }}
+            />
+            <TextField
+              fullWidth
+              required
+              multiline
+              rows={3}
+              id="add-content"
+              label="Comment"
+              placeholder="Write a comment…"
+              value={addDraft}
+              onChange={updateAddContentState}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') handleAddCancel();
+              }}
+              slotProps={{ htmlInput: { maxLength: MAX_LENGTH } }}
+            />
+            <Typography variant="caption" sx={{ textAlign: 'right' }}>
+              {addDraft.length} / {MAX_LENGTH}
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="contained"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onAddSubmit();
+                }}
+              >
+                Submit
+              </Button>
+              <Button variant="outlined" onClick={handleAddCancel}>
+                Cancel
+              </Button>
+            </Stack>
+          </Stack>
+        </Box>
       )}
-      <div className="comment-name-input">
-        <label htmlFor="user-name">Your name: </label>
-        <input
-          id="user-name"
-          type="text"
-          value={currentUserName}
-          onChange={handleNameChange}
-          placeholder="Enter your name to comment"
-        />
-      </div>
       {status === 'loading' && <p className="comment-list">Loading comments…</p>}
       {status === 'error' && (
         <p className="comment-list">Could not load comments. Is the API running?</p>
       )}
       {status === 'ready' && (
         <div className="comment-list">
-          {topLevel.map((parent) => (
+          {topLevel.map((parent) => {
+            const visibleReplies = (repliesByParent.get(parent.id) ?? []).filter(
+              (r) => !r.isDeleted,
+            );
+            if (parent.isDeleted && visibleReplies.length === 0) return null;
+            return (
             <div key={parent.id}>
               <CommentCard
                 comment={parent}
                 currentUserId={currentUserId}
+                currentUserName={currentUserName}
                 now={now}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onReply={handlePost}
               />
-              {(repliesByParent.get(parent.id) ?? []).map((reply) => (
+              {visibleReplies.map((reply) => (
                 <CommentCard
                   key={reply.id}
                   comment={reply}
                   currentUserId={currentUserId}
+                  currentUserName={currentUserName}
                   now={now}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                   onReply={handlePost}
                   isReply
+                  parentAuthorName={parent.isDeleted ? null : parent.authorName}
                 />
               ))}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </>
