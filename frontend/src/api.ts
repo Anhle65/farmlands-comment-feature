@@ -41,3 +41,12 @@ export async function patchComment(
   );
   return response.data;
 }
+
+export async function deleteComment(id: number, authorId: string, authorName: string): Promise<void> {
+  await axios.delete(`${API_BASE_URL}/api/comments/${id}`, {
+    headers: {
+      'X-AuthorId': authorId,
+      'X-AuthorName': authorName,
+    },
+  });
+}

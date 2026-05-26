@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { fetchComments, patchComment, postComment } from '../api';
+import { deleteComment, fetchComments, patchComment, postComment } from '../api';
 import type { Comment } from '../types';
 import CommentCard from './CommentCard';
 
@@ -56,13 +56,13 @@ export function CommentList() {
     localStorage.setItem('userName', name);
   };
 
-  // TODO: wire handleEdit and handleDelete to PATCH / DELETE helpers
   const handleEdit = async (id: number, content: string) => {
     const updated = await patchComment(id, content, currentUserId, currentUserName);
     setComments((prev) => prev.map((c) => (c.id === id ? updated : c)));
   };
   const handleDelete = async (id: number) => {
-    console.warn('TODO: DELETE /api/comments/' + id);
+    await deleteComment(id, currentUserId, currentUserName);
+    setComments((prev) => prev.filter((c) => c.id !== id));
   };
   const handleReply = async (parentId: number, content: string) => {
     const created = await postComment({
