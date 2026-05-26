@@ -5,6 +5,8 @@ import CommentCard from './CommentCard';
 
 type Status = 'loading' | 'ready' | 'error';
 
+const MAX_LENGTH = 1000;
+
 export function CommentList() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [status, setStatus] = useState<Status>('loading');
@@ -50,6 +52,9 @@ export function CommentList() {
   );
   const now = new Date();
 
+  const [isAdding, setIsAdding] = useState(false);
+  const [addDraft, setAddDraft] = useState('');
+
   const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
     const name = e.target.value;
     setCurrentUserName(name);
@@ -64,7 +69,7 @@ export function CommentList() {
     await deleteComment(id, currentUserId, currentUserName);
     setComments((prev) => prev.filter((c) => c.id !== id));
   };
-  const handleReply = async (parentId: number, content: string) => {
+  const handlePost = async (parentId: number | null, content: string) => {
     const created = await postComment({
       authorId: currentUserId,
       authorName: currentUserName,
@@ -74,9 +79,69 @@ export function CommentList() {
     setComments((prev) => [...prev, created]);
   };
 
+  const handleAddOpen = () => {
+    setAddDraft('');
+    setIsAdding(true);
+  };
+  const handleAddCancel = () => {
+    setIsAdding(false);
+    setAddDraft('');
+  };
+  const handleAddSubmit = async () => {
+    await handlePost(null, addDraft.trim());
+    setIsAdding(false);
+    setAddDraft('');
+  };
+
+  const addTrimmed = addDraft.trim();
+  const addDisabled =
+    currentUserName.trim().length === 0 ||
+    addTrimmed.length === 0 ||
+    addDraft.length > MAX_LENGTH;
+
   return (
     <>
-      <h2>Comments: {status === 'ready' ? `(${comments.length})` : ''}</h2>
+      <div className="comment-list-header">
+        <h2>Comments: {status === 'ready' ? `(${comments.length})` : ''}</h2>
+        {!isAdding && (
+          <button
+            type="button"
+            onClick={handleAddOpen}
+            disabled={currentUserName.trim().length === 0}
+            title={
+              currentUserName.trim().length === 0
+                ? 'Enter your name to comment'
+                : undefined
+            }
+          >
+            Add comment
+          </button>
+        )}
+      </div>
+      {isAdding && (
+        <div className="comment-add-form">
+          <textarea
+            autoFocus
+            placeholder="Write a comment…"
+            value={addDraft}
+            onChange={(e) => setAddDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') handleAddCancel();
+            }}
+          />
+          <p className="comment-counter">
+            {addDraft.length} / {MAX_LENGTH}
+          </p>
+          <div className="comment-actions">
+            <button type="button" disabled={addDisabled} onClick={handleAddSubmit}>
+              Submit
+            </button>
+            <button type="button" onClick={handleAddCancel}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <div className="comment-name-input">
         <label htmlFor="user-name">Your name: </label>
         <input
@@ -101,7 +166,7 @@ export function CommentList() {
                 now={now}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                onReply={handleReply}
+                onReply={handlePost}
               />
               {(repliesByParent.get(parent.id) ?? []).map((reply) => (
                 <CommentCard
@@ -111,7 +176,7 @@ export function CommentList() {
                   now={now}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
-                  onReply={handleReply}
+                  onReply={handlePost}
                   isReply
                 />
               ))}
