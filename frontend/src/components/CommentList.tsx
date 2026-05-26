@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { fetchComments } from '../api';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { fetchComments, postComment } from '../api';
 import type { Comment } from '../types';
+import CommentCard from './CommentCard';
 
 type Status = 'loading' | 'ready' | 'error';
 
@@ -35,9 +36,56 @@ export function CommentList() {
     return { topLevel, repliesByParent };
   }, [comments]);
 
+  // userId is generated once and persisted; it identifies "this browser" for edit/delete.
+  const [currentUserId] = useState(() => {
+    let id = localStorage.getItem('userId');
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem('userId', id);
+    }
+    return id;
+  });
+  const [currentUserName, setCurrentUserName] = useState(
+    () => localStorage.getItem('userName') ?? ''
+  );
+  const now = new Date();
+
+  const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const name = e.target.value;
+    setCurrentUserName(name);
+    localStorage.setItem('userName', name);
+  };
+
+  // TODO: wire handleEdit and handleDelete to PATCH / DELETE helpers
+  const handleEdit = async (id: number, content: string) => {
+    console.warn('TODO: PATCH /api/comments/' + id, content);
+  };
+  const handleDelete = async (id: number) => {
+    console.warn('TODO: DELETE /api/comments/' + id);
+  };
+  const handleReply = async (parentId: number, content: string) => {
+    const created = await postComment({
+      authorId: currentUserId,
+      authorName: currentUserName,
+      content,
+      parentId,
+    });
+    setComments((prev) => [...prev, created]);
+  };
+
   return (
     <>
       <h2>Comments: {status === 'ready' ? `(${comments.length})` : ''}</h2>
+      <div className="comment-name-input">
+        <label htmlFor="user-name">Your name: </label>
+        <input
+          id="user-name"
+          type="text"
+          value={currentUserName}
+          onChange={handleNameChange}
+          placeholder="Enter your name to comment"
+        />
+      </div>
       {status === 'loading' && <p className="comment-list">Loading comments…</p>}
       {status === 'error' && (
         <p className="comment-list">Could not load comments. Is the API running?</p>
@@ -46,30 +94,30 @@ export function CommentList() {
         <div className="comment-list">
           {topLevel.map((parent) => (
             <div key={parent.id}>
-              <CommentRow comment={parent} />
+              <CommentCard
+                comment={parent}
+                currentUserId={currentUserId}
+                now={now}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onReply={handleReply}
+              />
               {(repliesByParent.get(parent.id) ?? []).map((reply) => (
-                <CommentRow key={reply.id} comment={reply} isReply />
+                <CommentCard
+                  key={reply.id}
+                  comment={reply}
+                  currentUserId={currentUserId}
+                  now={now}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onReply={handleReply}
+                  isReply
+                />
               ))}
             </div>
           ))}
         </div>
       )}
     </>
-  );
-}
-
-function CommentRow({ comment, isReply = false }: { comment: Comment; isReply?: boolean }) {
-  return (
-    <div className={isReply ? 'comment-reply' : undefined}>
-      <p>
-        {isReply ? '↳ ' : ''}
-        <strong>{comment.authorName}</strong>
-        {' · '}
-        {new Date(comment.createdAt).toLocaleString()}
-        {comment.updatedAt ? ' · (edited)' : ''}
-        {comment.parentId !== null ? ` · reply to #${comment.parentId}` : ''}
-      </p>
-      <p>{comment.isDeleted ? '[deleted]' : comment.content}</p>
-    </div>
   );
 }
