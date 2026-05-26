@@ -20,3 +20,24 @@ export async function postComment(comment: NewComment): Promise<Comment> {
   const response = await axios.post<Comment>(`${API_BASE_URL}/api/comments`, comment);
   return response.data;
 }
+
+export async function patchComment(
+  id: number,
+  content: string,
+  authorId: string,
+  authorName: string,
+): Promise<Comment> {
+  const patchDoc = [{ op: 'replace', path: '/content', value: content }];
+  const response = await axios.patch<Comment>(
+    `${API_BASE_URL}/api/comments/${id}`,
+    patchDoc,
+    {
+      headers: {
+        'Content-Type': 'application/json-patch+json',
+        'X-AuthorId': authorId,
+        'X-AuthorName': authorName,
+      },
+    },
+  );
+  return response.data;
+}
