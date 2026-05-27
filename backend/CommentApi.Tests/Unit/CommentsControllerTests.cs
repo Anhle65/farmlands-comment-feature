@@ -150,6 +150,41 @@ public class CommentsControllerTests: IDisposable
         Assert.Equal(before, _store.GetAll().Count);
     }
 
+    [Fact]
+    public void PostComment_EmptyContent_Returns400AndDoesNotAdd()
+    {
+        var controller = new CommentsController(_store);
+        var before = _store.GetAll().Count;
+
+        var action = controller.PostComment(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = _authorName,
+            Content = "",
+        });
+
+        var bad = Assert.IsType<BadRequestObjectResult>(action.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, bad.StatusCode);
+        Assert.Equal(before, _store.GetAll().Count);
+    }
+
+    [Fact]
+    public void PostComment_EmptyName_Returns400AndDoesNotAdd()
+    {
+        var controller = new CommentsController(_store);
+        var before = _store.GetAll().Count;
+
+        var action = controller.PostComment(new Comment
+        {
+            AuthorId = _authorId,
+            AuthorName = "",
+            Content = "This is a comment.",
+        });
+
+        var bad = Assert.IsType<BadRequestObjectResult>(action.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, bad.StatusCode);
+        Assert.Equal(before, _store.GetAll().Count);
+    }
     // ── helper ─────────────────────────────────────────────────────────
     // Unwraps an ActionResult<Comment> that should be a 201 Created and returns
     // the underlying Comment. Fails the test with a clear message if not.
